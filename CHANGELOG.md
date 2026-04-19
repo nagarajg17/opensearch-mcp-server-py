@@ -5,6 +5,7 @@ Inspired from [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 
 ### Added
+- Add OAuth protected-resource support for the streaming MCP server, including bearer-token validation, scope enforcement, protected-resource metadata, and bearer-token forwarding to OpenSearch ([#98](https://github.com/opensearch-project/opensearch-mcp-server-py/issues/98))
 - Expose tool category in the `_meta` field of each `Tool` object returned by `tools/list`. Core tools report `"_meta": {"category": "core_tools"}`; tools with no known category omit `_meta`. The MCP 1.x schema for `Tool` does not restrict additional properties, so this is safe for all existing clients. ([#301](https://github.com/opensearch-project/opensearch-mcp-server-py/pull/301))
 - Add `analytics` category as a superset of `observability` (PPLQueryTool) and `skills` (DataDistributionTool, LogPatternAnalysisTool, MetricChangeAnalysisTool). All three categories are independent — `enabled_categories=skills` enables the 3 skills tools, `enabled_categories=observability` enables PPLQueryTool, and `enabled_categories=analytics` enables all 4. ([#301](https://github.com/opensearch-project/opensearch-mcp-server-py/pull/301))
 
