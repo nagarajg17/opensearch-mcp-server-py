@@ -1,0 +1,31 @@
+{
+  "OpensearchMCP": {
+    "entityTypes": {
+      "User": {
+        "shape": { "type": "Record", "attributes": {} },
+        "memberOfTypes": ["Role"]
+      },
+      "Role": {
+        "shape": { "type": "Record", "attributes": {} },
+        "memberOfTypes": ["Role"]
+      },
+      "Index": {
+        "shape": { "type": "Record", "attributes": {} }
+      },
+      "Cluster": {
+        "shape": { "type": "Record", "attributes": {} }
+      }
+    },
+    "actions": {
+      "ListIndexTool":            { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "IndexMappingTool":         { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "SearchIndexTool":          { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "GetShardsTool":            { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "ClusterHealthTool":        { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "CountTool":                { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "MsearchTool":              { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "ExplainTool":              { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "GenericOpenSearchApiTool": { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } }
+    }
+  }
+}

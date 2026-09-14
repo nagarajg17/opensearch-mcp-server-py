@@ -6,13 +6,18 @@ import contextlib
 import logging
 import uvicorn
 from mcp.server import Server
-from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
+from mcp.server.auth.middleware.auth_context import AuthContextMiddleware, get_access_token
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
 from mcp.server.auth.routes import build_resource_metadata_url, create_protected_resource_routes
 from mcp.server.sse import SseServerTransport
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.shared.exceptions import MCPError
 from mcp.types import CallToolRequestParams, CallToolResult, ListToolsResult, TextContent, Tool
+from mcp_server_opensearch.authorization import (
+    AuthzRequest,
+    extract_roles,
+    get_authorization_client,
+)
 from mcp_server_opensearch.client_context import ClientNameMiddleware
 from mcp_server_opensearch.clusters_information import load_clusters_from_yaml
 from mcp_server_opensearch.global_state import set_config_file_path, set_mode, set_profile
@@ -31,6 +36,21 @@ from tools.tool_filter import get_tools
 from tools.tool_generator import generate_tools_from_openapi
 from tools.tools import TOOL_REGISTRY
 from typing import AsyncIterator
+
+
+def _resource_for(params: CallToolRequestParams) -> tuple[str, str]:
+    """Map a tool call to a Cedar resource (type, id).
+
+    Tools that target an index map to ``Index::<name>``; everything else maps to
+    ``Cluster::default``. Kept intentionally simple; refine per-tool as needed.
+    """
+    args = params.arguments or {}
+    index = args.get('index')
+    if isinstance(index, str) and index.strip():
+        return 'Index', index.strip()
+    if isinstance(index, list) and index:
+        return 'Index', str(index[0])
+    return 'Cluster', 'default'
 
 
 async def create_mcp_server(
@@ -67,6 +87,9 @@ async def create_mcp_server(
     )
     logging.info(f'Enabled tools: {list(enabled_tools.keys())}')
 
+    # Policy Decision Point (PDP) — cedar-agent / AVP / noop, selected by env.
+    authz_client = get_authorization_client()
+
     async def _list_tools(ctx, params) -> ListToolsResult:
         tools = []
         for tool_name, tool_info in enabled_tools.items():
@@ -85,6 +108,50 @@ async def create_mcp_server(
     async def _call_tool(ctx, params: CallToolRequestParams) -> CallToolResult:
         from mcp_server_opensearch.client_context import request_context_var
         from mcp_server_opensearch.tool_executor import _build_call_tool_result, execute_tool
+
+        # --- Authorization (PEP): check before executing the tool ---
+        access = get_access_token()
+        claims = getattr(access, 'claims', None) if access else None
+        principal_id = (
+            (access.subject if access and access.subject else None)
+            or (claims or {}).get('preferred_username')
+            or 'anonymous'
+        )
+        roles = extract_roles(claims)
+        res_type, res_id = _resource_for(params)
+        decision = await authz_client.is_authorized(
+            AuthzRequest(
+                principal_id=str(principal_id),
+                roles=roles,
+                action=params.name,
+                resource_type=res_type,
+                resource_id=res_id,
+                context={'scopes': list(access.scopes) if access else []},
+            )
+        )
+        if not decision.allowed:
+            logging.info(
+                'AuthZ DENY principal=%s roles=%s action=%s resource=%s::%s reason=%s',
+                principal_id,
+                roles,
+                params.name,
+                res_type,
+                res_id,
+                decision.reason,
+            )
+            return _build_call_tool_result(
+                [
+                    TextContent(
+                        type='text',
+                        text=(
+                            f"Authorization denied: principal '{principal_id}' with roles "
+                            f'{roles or "[]"} is not permitted to call {params.name} on '
+                            f'{res_type}::{res_id}.'
+                        ),
+                    )
+                ],
+                is_error=True,
+            )
 
         token = request_context_var.set(ctx.request)
         try:

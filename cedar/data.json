@@ -1,0 +1,15 @@
+[
+  { "uid": { "type": "Role", "id": "opensearch-reader" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Role", "id": "opensearch-writer" }, "attrs": {}, "parents": [ { "type": "Role", "id": "opensearch-reader" } ] },
+  { "uid": { "type": "Role", "id": "opensearch-admin" }, "attrs": {}, "parents": [ { "type": "Role", "id": "opensearch-writer" } ] },
+
+  { "uid": { "type": "Action", "id": "ListIndexTool" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Action", "id": "IndexMappingTool" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Action", "id": "SearchIndexTool" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Action", "id": "GetShardsTool" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Action", "id": "ClusterHealthTool" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Action", "id": "CountTool" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Action", "id": "MsearchTool" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Action", "id": "ExplainTool" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Action", "id": "GenericOpenSearchApiTool" }, "attrs": {}, "parents": [] }
+]
