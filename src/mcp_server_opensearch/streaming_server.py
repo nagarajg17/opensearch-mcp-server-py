@@ -4,6 +4,7 @@
 import asyncio
 import contextlib
 import logging
+import uuid
 import uvicorn
 from mcp.server import Server
 from mcp.server.auth.middleware.auth_context import AuthContextMiddleware, get_access_token
@@ -13,12 +14,13 @@ from mcp.server.sse import SseServerTransport
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.shared.exceptions import MCPError
 from mcp.types import CallToolRequestParams, CallToolResult, ListToolsResult, TextContent, Tool
+from mcp_server_opensearch.audit import AuditEvent, AuditSink, get_audit_sink
 from mcp_server_opensearch.authorization import (
     AuthzRequest,
     extract_roles,
     get_authorization_client,
 )
-from mcp_server_opensearch.client_context import ClientNameMiddleware
+from mcp_server_opensearch.client_context import ClientNameMiddleware, client_name_var
 from mcp_server_opensearch.clusters_information import load_clusters_from_yaml
 from mcp_server_opensearch.global_state import set_config_file_path, set_mode, set_profile
 from mcp_server_opensearch.oauth import JwtTokenVerifier, OAuthConfig, load_oauth_config
@@ -58,6 +60,7 @@ async def create_mcp_server(
     profile: str = '',
     config_file_path: str = '',
     cli_tool_overrides: dict | None = None,
+    audit_sink: AuditSink | None = None,
 ) -> Server:
     """Create and configure the MCP server instance."""
     # Set the global mode
@@ -89,6 +92,10 @@ async def create_mcp_server(
 
     # Policy Decision Point (PDP) — cedar-agent / AVP / noop, selected by env.
     authz_client = get_authorization_client()
+    # Security audit sink — file / logging / noop, selected by env.
+    # Reuse a passed-in sink (so serve() can close it on shutdown) or build one.
+    if audit_sink is None:
+        audit_sink = get_audit_sink()
 
     async def _list_tools(ctx, params) -> ListToolsResult:
         tools = []
@@ -129,6 +136,24 @@ async def create_mcp_server(
                 context={'scopes': list(access.scopes) if access else []},
             )
         )
+
+        # --- Security audit: record the authorization decision (allow AND deny) ---
+        audit_sink.emit(
+            AuditEvent(
+                event_type='authz_decision',
+                decision='allow' if decision.allowed else 'deny',
+                principal=str(principal_id),
+                client_id=(access.client_id if access else None),
+                roles=roles,
+                scopes=list(access.scopes) if access else [],
+                action=params.name,
+                resource=f'{res_type}::{res_id}',
+                reason=decision.reason,
+                request_id=uuid.uuid4().hex,
+                client_name=client_name_var.get('unknown'),
+            )
+        )
+
         if not decision.allowed:
             logging.info(
                 'AuthZ DENY principal=%s roles=%s action=%s resource=%s::%s reason=%s',
@@ -200,10 +225,12 @@ class MCPStarletteApp:
         mcp_server: Server,
         stateless: bool = True,
         oauth_config: OAuthConfig | None = None,
+        audit_sink: AuditSink | None = None,
     ):
         """Initialize the MCP Starlette application."""
         self.mcp_server = mcp_server
         self.oauth_config = oauth_config
+        self.audit_sink = audit_sink
         self.sse = SseServerTransport('/messages/')
         self.session_manager = StreamableHTTPSessionManager(
             app=self.mcp_server,
@@ -251,6 +278,8 @@ class MCPStarletteApp:
                     await monitor_task
                 except (asyncio.CancelledError, Exception):
                     pass
+                if self.audit_sink is not None:
+                    self.audit_sink.close()
                 logging.info('Application shutting down...')
 
     async def handle_streamable_http(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -352,9 +381,14 @@ async def serve(
     stateless: bool = True,
 ) -> None:
     """Start the MCP server in streaming HTTP mode."""
-    mcp_server = await create_mcp_server(mode, profile, config_file_path, cli_tool_overrides)
+    audit_sink = get_audit_sink()
+    mcp_server = await create_mcp_server(
+        mode, profile, config_file_path, cli_tool_overrides, audit_sink=audit_sink
+    )
     oauth_config = load_oauth_config(host, port)
-    app_handler = MCPStarletteApp(mcp_server, stateless=stateless, oauth_config=oauth_config)
+    app_handler = MCPStarletteApp(
+        mcp_server, stateless=stateless, oauth_config=oauth_config, audit_sink=audit_sink
+    )
     app = app_handler.create_app()
 
     config = uvicorn.Config(
