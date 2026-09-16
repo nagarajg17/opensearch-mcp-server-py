@@ -24,6 +24,7 @@ from mcp_server_opensearch.client_context import ClientNameMiddleware, client_na
 from mcp_server_opensearch.clusters_information import load_clusters_from_yaml
 from mcp_server_opensearch.global_state import set_config_file_path, set_mode, set_profile
 from mcp_server_opensearch.oauth import JwtTokenVerifier, OAuthConfig, load_oauth_config
+from mcp_server_opensearch.operation_guard import check_query_guards, is_destructive
 from mcp_server_opensearch.server_instructions import get_server_instructions
 from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
@@ -126,11 +127,19 @@ async def create_mcp_server(
         )
         roles = extract_roles(claims)
         res_type, res_id = _resource_for(params)
+
+        # Destructive GenericOpenSearchApiTool calls (delete, delete-by-query, close,
+        # reindex, cluster settings, stored scripts) route to a dedicated Cedar action
+        # that only admins may perform — containing a manipulated agent's blast radius.
+        authz_action = params.name
+        if params.name == 'GenericOpenSearchApiTool' and is_destructive(params.name, params.arguments):
+            authz_action = 'DestructiveOperation'
+
         decision = await authz_client.is_authorized(
             AuthzRequest(
                 principal_id=str(principal_id),
                 roles=roles,
-                action=params.name,
+                action=authz_action,
                 resource_type=res_type,
                 resource_id=res_id,
                 context={'scopes': list(access.scopes) if access else []},
@@ -146,11 +155,12 @@ async def create_mcp_server(
                 client_id=(access.client_id if access else None),
                 roles=roles,
                 scopes=list(access.scopes) if access else [],
-                action=params.name,
+                action=authz_action,
                 resource=f'{res_type}::{res_id}',
                 reason=decision.reason,
                 request_id=uuid.uuid4().hex,
                 client_name=client_name_var.get('unknown'),
+                extra={'tool': params.name},
             )
         )
 
@@ -159,7 +169,7 @@ async def create_mcp_server(
                 'AuthZ DENY principal=%s roles=%s action=%s resource=%s::%s reason=%s',
                 principal_id,
                 roles,
-                params.name,
+                authz_action,
                 res_type,
                 res_id,
                 decision.reason,
@@ -170,11 +180,38 @@ async def create_mcp_server(
                         type='text',
                         text=(
                             f"Authorization denied: principal '{principal_id}' with roles "
-                            f'{roles or "[]"} is not permitted to call {params.name} on '
+                            f'{roles or "[]"} is not permitted to call {authz_action} on '
                             f'{res_type}::{res_id}.'
                         ),
                     )
                 ],
+                is_error=True,
+            )
+
+        # --- Query guards (B): reject abusive query shapes even when authorized ---
+        guard_error = check_query_guards(params.name, params.arguments)
+        if guard_error:
+            logging.info(
+                'Query guard blocked principal=%s action=%s: %s',
+                principal_id,
+                params.name,
+                guard_error,
+            )
+            audit_sink.emit(
+                AuditEvent(
+                    event_type='query_guard_block',
+                    decision='deny',
+                    principal=str(principal_id),
+                    roles=roles,
+                    action=params.name,
+                    resource=f'{res_type}::{res_id}',
+                    reason=[guard_error],
+                    request_id=uuid.uuid4().hex,
+                    client_name=client_name_var.get('unknown'),
+                )
+            )
+            return _build_call_tool_result(
+                [TextContent(type='text', text=f'Request blocked: {guard_error}')],
                 is_error=True,
             )
 
