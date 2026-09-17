@@ -101,6 +101,8 @@ class JwtTokenVerifier(TokenVerifier):
             scopes=scopes,
             expires_at=_as_int(payload.get('exp')),
             resource=self.config.resource_url,
+            subject=str(payload.get('sub')) if payload.get('sub') else None,
+            claims=payload,
         )
 
 

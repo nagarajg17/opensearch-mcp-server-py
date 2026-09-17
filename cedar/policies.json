@@ -1,0 +1,14 @@
+[
+  {
+    "id": "reader-policy",
+    "content": "permit(principal in OpensearchMCP::Role::\"opensearch-reader\", action in [OpensearchMCP::Action::\"ListIndexTool\", OpensearchMCP::Action::\"IndexMappingTool\", OpensearchMCP::Action::\"SearchIndexTool\", OpensearchMCP::Action::\"GetShardsTool\", OpensearchMCP::Action::\"ClusterHealthTool\", OpensearchMCP::Action::\"CountTool\", OpensearchMCP::Action::\"MsearchTool\", OpensearchMCP::Action::\"ExplainTool\"], resource);"
+  },
+  {
+    "id": "writer-policy",
+    "content": "permit(principal in OpensearchMCP::Role::\"opensearch-writer\", action in [OpensearchMCP::Action::\"GenericOpenSearchApiTool\"], resource);"
+  },
+  {
+    "id": "admin-policy",
+    "content": "permit(principal in OpensearchMCP::Role::\"opensearch-admin\", action, resource);"
+  }
+]
