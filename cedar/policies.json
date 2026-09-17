@@ -10,5 +10,9 @@
   {
     "id": "admin-policy",
     "content": "permit(principal in OpensearchMCP::Role::\"opensearch-admin\", action, resource);"
+  },
+  {
+    "id": "forbid-destructive-non-admin",
+    "content": "forbid(principal, action == OpensearchMCP::Action::\"DestructiveOperation\", resource) unless { principal in OpensearchMCP::Role::\"opensearch-admin\" };"
   }
 ]

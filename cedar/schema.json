@@ -25,7 +25,8 @@
       "CountTool":                { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
       "MsearchTool":              { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
       "ExplainTool":              { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
-      "GenericOpenSearchApiTool": { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } }
+      "GenericOpenSearchApiTool": { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } },
+      "DestructiveOperation":     { "appliesTo": { "principalTypes": ["User", "Role"], "resourceTypes": ["Index", "Cluster"] } }
     }
   }
 }
